@@ -1,10 +1,10 @@
 // Key Pair Name
-key_pair = "ASAv Testing"
+key_pair = "FTDv Testing"
 
 // Firepower Management Configuration
 ftd_password = "cisco123"
 ftd_hostname = "firepower"
-fmc_IP       = "home.alannix.com"
+fmc_IP       = "fqdn.of.fmc"
 fmc_reg_key  = "cisco123"
 fmc_nat_id   = ""
 
