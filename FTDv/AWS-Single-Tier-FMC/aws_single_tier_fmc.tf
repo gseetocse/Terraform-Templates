@@ -67,6 +67,16 @@ resource "aws_security_group" "SG-Allow-All" {
 /*
   Create Network Interfaces
  */
+ resource "aws_network_interface" "FMCv-Management" {
+  subnet_id       = "${aws_subnet.Management-Subnet.id}"
+  security_groups = ["${aws_security_group.SG-Allow-All.id}"]
+  source_dest_check = false
+  private_ips_count = 0
+  private_ips = ["${var.fmc_IP}"]
+  tags = {
+    "Name" = "FMCv-Management"
+  }
+}
 resource "aws_network_interface" "FTDv-Management" {
   subnet_id       = "${aws_subnet.Management-Subnet.id}"
   security_groups = ["${aws_security_group.SG-Allow-All.id}"]
@@ -158,7 +168,14 @@ resource "aws_route_table_association" "Route-Table-Association-Inside" {
 /*
   Create EIP
  */
- resource "aws_eip" "Management-EIP" {
+resource "aws_eip" "FMC-EIP" {
+  vpc   = true
+  depends_on = ["aws_vpc.main", "aws_internet_gateway.Internet-Gateway"]
+  tags = {
+    "Name" = "FMCv Management IP"
+  }
+}
+resource "aws_eip" "Management-EIP" {
   vpc   = true
   depends_on = ["aws_vpc.main", "aws_internet_gateway.Internet-Gateway"]
   tags = {
@@ -172,6 +189,11 @@ resource "aws_eip" "Outside-EIP" {
     "Name" = "FTDv Outside IP"
   }
 }
+
+resource "aws_eip_association" "FMC-EIP-Association" {
+  network_interface_id = "${aws_network_interface.FMCv-Management.id}"
+  allocation_id        = "${aws_eip.FMC-EIP.id}"
+}
 resource "aws_eip_association" "Management-EIP-Association" {
   network_interface_id = "${aws_network_interface.FTDv-Management.id}"
   allocation_id        = "${aws_eip.Management-EIP.id}"
@@ -179,6 +201,59 @@ resource "aws_eip_association" "Management-EIP-Association" {
 resource "aws_eip_association" "Outside-EIP-Association" {
   network_interface_id = "${aws_network_interface.FTDv-Outside.id}"
   allocation_id        = "${aws_eip.Outside-EIP.id}"
+}
+
+/*
+  Fiters to get the most recent BYOL FMCv image
+ */
+data "aws_ami" "cisco-fmc-lookup" {
+  most_recent = true
+
+  filter {
+    name = "name"
+    values = ["FMCv*"]
+  }
+
+  filter {
+    name = "product-code"
+    values = ["bhx85r4r91ls2uwl69ajm9v1b"]
+  }
+
+  owners = ["679593333241"]
+}
+
+/*
+  Set up the FMC configuration file
+ */
+data "template_file" "FMCv-init" {
+  template = "${file("fmc_config.txt")}"
+
+  vars {
+    fmc_password = "${var.fmc_password}"
+    fmc_hostname = "${var.fmc_hostname}"
+  }
+}
+
+/*
+  Create FTDv Instance
+ */
+resource "aws_instance" "FMCv" {
+  ami           = "${data.aws_ami.cisco-fmc-lookup.id}"
+  instance_type = "${var.fmc_instance_size}"
+  tags          = {
+    Name = "Cisco FMCv"
+  }
+
+  user_data = "${data.template_file.FMCv-init.rendered}"
+
+  network_interface {
+    device_index = 0
+    network_interface_id = "${aws_network_interface.FMCv-Management.id}"
+  }
+
+  provisioner "local-exec" {
+    command = "echo ${aws_instance.FMCv.public_ip} > fmc_ip_address.txt"
+  }
 }
 
 /*
@@ -220,7 +295,7 @@ data "template_file" "FTDv-init" {
  */
 resource "aws_instance" "FTDv" {
   ami           = "${data.aws_ami.cisco-ftd-lookup.id}"
-  instance_type = "${var.instance_size}"
+  instance_type = "${var.ftd_instance_size}"
   tags          = {
     Name = "Cisco FTDv"
   }
@@ -248,10 +323,13 @@ resource "aws_instance" "FTDv" {
   }
 
   provisioner "local-exec" {
-    command = "echo ${aws_instance.FTDv.public_ip} > ip_address.txt"
+    command = "echo ${aws_instance.FTDv.public_ip} > ftd_ip_address.txt"
   }
 }
 
-output "ip" {
+output "FMCv-IP" {
+  value = "${aws_eip.FMC-EIP.public_ip}"
+}
+output "FTDv-IP" {
   value = "${aws_eip.Management-EIP.public_ip}"
 }
