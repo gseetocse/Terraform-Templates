@@ -67,7 +67,7 @@ resource "aws_security_group" "SG-Allow-All" {
 /*
   Create Network Interfaces
  */
- resource "aws_network_interface" "FMCv-Management" {
+resource "aws_network_interface" "FMCv-Management" {
   subnet_id       = "${aws_subnet.Management-Subnet.id}"
   security_groups = ["${aws_security_group.SG-Allow-All.id}"]
   source_dest_check = false
@@ -235,7 +235,7 @@ data "template_file" "FMCv-init" {
 }
 
 /*
-  Create FTDv Instance
+  Create FMCv Instance
  */
 resource "aws_instance" "FMCv" {
   ami           = "${data.aws_ami.cisco-fmc-lookup.id}"
